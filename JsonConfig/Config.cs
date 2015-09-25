@@ -73,49 +73,71 @@ namespace JsonConfig
 		public delegate void UserConfigFileChangedHandler ();
 		public static event UserConfigFileChangedHandler OnUserConfigFileChanged;
 
-		static Config ()
-		{
-			// static C'tor, run once to check for compiled/embedded config
+        static Config()
+        {
+            // static C'tor, run once to check for compiled/embedded config
 
-			// scan ALL linked assemblies and merge their default configs while
-			// giving the entry assembly top priority in merge
-			var entryAssembly = Assembly.GetEntryAssembly();
-			var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-			foreach (var assembly in assemblies.Where(assembly => !assembly.Equals(entryAssembly))) {
-				Default = Merger.Merge(GetDefaultConfig(assembly), Default);
-			}
-			if (entryAssembly != null)
-				Default = Merger.Merge(GetDefaultConfig(entryAssembly), Default);
+            // scan ALL linked assemblies and merge their default configs while
+            // giving the entry assembly top priority in merge
+            var entryAssembly = Assembly.GetEntryAssembly();
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            foreach (var assembly in assemblies.Where(assembly => !assembly.Equals(entryAssembly)))
+            {
+                Default = Merger.Merge(GetDefaultConfig(assembly), Default);
+            }
+            if (entryAssembly != null)
+                Default = Merger.Merge(GetDefaultConfig(entryAssembly), Default);
 
-			// User config (provided through a settings.conf file)
-			var execution_path = AppDomain.CurrentDomain.BaseDirectory;
-			var user_config_filename = "settings";
+            // User config (provided through a settings.conf file)
+            var execution_path = AppDomain.CurrentDomain.BaseDirectory;
+            var user_config_filename = "settings";
 
-			// TODO this is ugly but makes life easier
-			// we are run from the IDE, so the settings.conf needs
-			// to be searched two levels up
-			if (execution_path.EndsWith ("/bin/Debug/"))
+            // TODO this is ugly but makes life easier
+            // we are run from the IDE, so the settings.conf needs
+            // to be searched two levels up
+            /*if (execution_path.EndsWith ("/bin/Debug/"))
 				execution_path = execution_path.Replace("/bin/Debug", ""); // for Unix-like
 			if (execution_path.EndsWith(@"\bin\Debug\")) 				
 				execution_path = execution_path.Replace(@"\bin\Debug", ""); // for Win
+                */
 
-			var d = new DirectoryInfo (execution_path);
-			var userConfig = (from FileInfo fi in d.GetFiles ()
-				where (
-					fi.FullName.EndsWith (user_config_filename + ".conf") ||
-					fi.FullName.EndsWith (user_config_filename + ".json") ||
-					fi.FullName.EndsWith (user_config_filename + ".conf.json") ||
-					fi.FullName.EndsWith (user_config_filename + ".json.conf")
-				) select fi).FirstOrDefault ();
+            var d = new DirectoryInfo(execution_path);
+            var userConfig = (from FileInfo fi in d.GetFiles()
+                              where (
+                                  fi.FullName.EndsWith(user_config_filename + ".conf") ||
+                                  fi.FullName.EndsWith(user_config_filename + ".json") ||
+                                  fi.FullName.EndsWith(user_config_filename + ".conf.json") ||
+                                  fi.FullName.EndsWith(user_config_filename + ".json.conf")
+                              )
+                              select fi); //.FirstOrDefault ();
 
-			if (userConfig != null) {
-				User = Config.ParseJson (File.ReadAllText (userConfig.FullName));
-				WatchUserConfig (userConfig);
-			}
-			else {
-				User = new NullExceptionPreventer ();
-			}
-		}
+            //om vi har fler filer så gör vi merge på dom 
+
+            if (userConfig != null)
+            {
+
+                if (userConfig.Count() > 1)
+                {
+                    List<ConfigObject> configObjects = new List<ConfigObject>();
+                    foreach (var item in userConfig)
+                    {
+                        configObjects.Add(Config.ParseJson(File.ReadAllText(item.FullName)));
+                    }
+                    User = Merger.MergeMultiple(configObjects.ToArray());
+                }
+                else
+                {
+                    User = Config.ParseJson(File.ReadAllText(userConfig.FirstOrDefault().FullName));
+                    WatchUserConfig(userConfig.FirstOrDefault());
+                }
+
+
+            }
+            else
+            {
+                User = new NullExceptionPreventer();
+            }
+        }
 		private static FileSystemWatcher userConfigWatcher;
 		public static void WatchUserConfig (FileInfo info)
 		{
